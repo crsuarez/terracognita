@@ -90,6 +90,101 @@ Now, you can write your `computeInstance` function. Check-out the other function
 
 We have an `aws/cmd` that generates the `aws/reader` interface, which is then used by each resource. To add a new call you have to add a new Function to the list in `aws/cmd/functions.go` and run `make generate`, you'll have the code fully generated for that function. If it has a specific implementation, which is too different from the others you can check the `ListBuckets` Function.
 
+###### Example with aws_db_parameter_group
+
+1. Add your function
+
+Functions are based on `https://github.com/aws/aws-sdk-go/tree/master/service`.
+For example with `aws_db_parameter_group` you should be able to find the Entity, Prefix, Service in https://github.com/aws/aws-sdk-go/blob/master/service/rds/rdsiface/interface.go#L313
+In our case we want to read datas, the dedicated function is `DescribeDBParameterGroups`
+
+  * Entity: use the function name without prefix "DBParameterGroups"
+  * Prefix: use thefunction prefix (generaly Describe, List or Get)
+  * Service: SubDirectory from aws-sdk-go service `service/rds`
+
+```
+vim aws/cmd/functions.go
+
+	Function{
+		Entity:  "DBParameterGroups",
+		Prefix:  "Describe",
+		Service: "rds",
+		Documentation: `
+		// GetDBParameterGroups returns all DB parameterGroups based on the input given.
+		// Returned values are commented in the interface doc comment block.
+		`,
+	},
+
+```
+
+Functions are used to generate Get methode in `aws/reader/reader.go`. With our example we should find `GetDBParameterGroups` at th eend when `make generate` will be executed
+
+
+2. Add your resource type
+
+The naming is based on terraform resource like `aws_db_parameter_group` without `aws` and replace `bla_foo` by `blaFoo`. It should looks like `dbParameterGroup`. For the function by default start by `lowercase` and end by `s`
+
+
+```
+vim aws/resources.go
+
+
+const (
+
+  DBParameterGroup
+
+...
+
+resources = map[ResourceType]rtFn{
+  DBParameterGroup:   dbParameterGroups,
+
+```
+
+const is used to generate resourcetype_enumer.go
+
+
+3. Add the associeted function to generate terraform code
+
+
+```
+func dbParameterGroups(ctx context.Context, a *aws, resourceType string, tags []tag.Tag) ([]provider.Resource, error) {
+	dbParameterGroups, err := a.awsr.GetDBParameterGroups(ctx, nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	resources := make([]provider.Resource, 0)
+	for _, i := range dbParameterGroups.DBParameterGroups {
+
+		r, err := initializeResource(a, *i.DBParameterGroupName, resourceType)
+		if err != nil {
+			return nil, err
+		}
+
+		resources = append(resources, r)
+	}
+
+	return resources, nil
+}
+```
+
+4. Make generate
+
+Last step is to re-generate the following files with enumer and build/install.
+
+  * aws/reader/reader.go
+  * aws/resourcetype_enumer.go
+
+```
+make generate
+make install
+```
+
+5. Update CHANGELOG
+
+Don't forget to update the `CHANGELOG.md`
+
 ##### GCP Middleware layer
 
 In `reader.go`, you can add your middleware function `ListInstances`. You will need to be equiped with this [documentation](https://godoc.org/google.golang.org/api/compute/v1). Google SDK is pretty standard, APIs are most of the time used in a similar way.
